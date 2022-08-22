@@ -133,6 +133,7 @@ property :tls_prefer_server_cipher_suites, [true, false]
 property :translate_wan_addrs, [true, false]
 property :ui, [true, false]
 property :ui_dir, String
+property :ui_enabled, [Hash, Mash]
 property :unix_sockets, [Hash, Mash]
 property :verify_incoming, [true, false]
 property :verify_incoming_https, [true, false]

@@ -11,6 +11,7 @@ property :systemd_params, Hash, default: lazy { node['consul']['service']['syste
 property :program, String, default: '/usr/local/bin/consul'
 property :acl_token, String, default: lazy { node['consul']['config']['acl_master_token'] }
 property :restart_on_update, [true, false], default: true
+property :version, String, default: lazy { node['consul']['version'] }
 
 def shell_environment
   shell = node['consul']['service_shell']
@@ -36,27 +37,52 @@ action :enable do
     mode '0750'
   end
 
-  systemd_unit 'consul.service' do
-    content(
-      Unit: {
-        Description: 'consul',
-        Wants: 'network.target',
-        After: 'network.target',
-      },
-      Service: {
-        Environment: new_resource.environment.map { |key, val| %("#{key}=#{val}") }.join(' '),
-        ExecStart: command(new_resource.config_file, new_resource.config_dir, new_resource.program),
-        ExecReload: '/bin/kill -HUP $MAINPID',
-        KillSignal: 'TERM',
-        User: new_resource.user,
-        WorkingDirectory: new_resource.data_dir,
-      }.merge(new_resource.systemd_params),
-      Install: {
-        WantedBy: 'multi-user.target',
-      }
-    )
-    notifies :restart, 'service[consul]' if new_resource.restart_on_update
-    action %i(create enable)
+  if node.platform_family?('rhel') && node['platform_version'].to_i == 6
+    template('/etc/init.d/consul') do
+      source 'sysvinit.service.erb'
+      owner new_resource.user
+      group new_resource.group
+      variables(
+        daemon: "/opt/consul/#{new_resource.version}/consul",
+        daemon_options: "agent -config-file=#{new_resource.config_file} -config-dir=#{new_resource.config_dir}",
+        environment: new_resource.environment.map,
+        name: 'consul',
+        pid_file: '/var/run/consul.pid',
+        reload_signal: 'HUP',
+        stop_signal: 'TERM',
+        user: new_resource.user
+      )
+      mode '744'
+      action :create
+      notifies :restart, 'service[consul]' if new_resource.restart_on_update
+    end
+
+    service 'consul' do
+      action :enable
+    end
+  else
+    systemd_unit 'consul.service' do
+      content(
+        Unit: {
+          Description: 'consul',
+          Wants: 'network.target',
+          After: 'network.target',
+        },
+        Service: {
+          Environment: new_resource.environment.map { |key, val| %("#{key}=#{val}") }.join(' '),
+          ExecStart: command(new_resource.config_file, new_resource.config_dir, new_resource.program),
+          ExecReload: '/bin/kill -HUP $MAINPID',
+          KillSignal: 'TERM',
+          User: new_resource.user,
+          WorkingDirectory: new_resource.data_dir,
+        }.merge(new_resource.systemd_params),
+        Install: {
+          WantedBy: 'multi-user.target',
+        }
+      )
+      notifies :restart, 'service[consul]' if new_resource.restart_on_update
+      action %i(create enable)
+    end
   end
 
   service 'consul' do
