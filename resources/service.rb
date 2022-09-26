@@ -37,7 +37,7 @@ action :enable do
     mode '0750'
   end
 
-  if node.platform_family?('rhel') && node['platform_version'].to_i == 6
+  if platform_family?('rhel') && node['platform_version'].to_i == 6
     template('/etc/init.d/consul') do
       source 'sysvinit.service.erb'
       owner new_resource.user
@@ -113,8 +113,14 @@ action :disable do
     action :stop
   end
 
-  systemd_unit 'consul.service' do
-    action %i(disable delete)
+  if platform_family?('rhel') && node['platform_version'].to_i == 6
+    service 'consul.service' do
+      action :disable
+    end
+  else
+    systemd_unit 'consul.service' do
+      action %i(disable delete)
+    end
   end
 end
 
