@@ -2,108 +2,123 @@
 #
 # <%= @name %> - this script manages the consul agent
 #
-# chkconfig: 345 99 70
-# description: this script manages the consul agent
-#
+# chkconfig:   345 95 05
+# processname: <%= @name %>
+
 ### BEGIN INIT INFO
 # Provides:       <%= @name %>
 # Required-Start: $local_fs $network
 # Required-Stop:  $local_fs $network
-# Default-Start: 2 3 4 5
-# Default-Stop: 0 1 6
+# Default-Start: 3 4 5
+# Default-Stop:  0 1 2 6
 # Short-Description: Manage the consul agent
 ### END INIT INFO
 
 <%= "limit nofile #{node['consul']['service_nofile']}" if node['consul']['service_nofile'] -%>
+# Source function library.
+. /etc/rc.d/init.d/functions
 
-prog="<%= File.basename(@daemon) %>"
-user="<%= @user %>"
+# Source networking configuration.
+. /etc/sysconfig/network
+
+# Check that networking is up.
+[ "$NETWORKING" = "no" ] && exit 0
+
 exec="<%= @daemon %>"
-pidfile="<%= @pid_file %>"
-logfile="/var/log/$prog.log"
+prog=${exec##*/}
+user="<%= @user %>"
+
 lockfile="/var/lock/subsys/$prog"
+pidfile="<%= @pid_file %>"
+logfile="/var/log/${prog}.log"
+sysconfig="/etc/sysconfig/$prog"
 
 <%- @environment.each do |key, val| -%>
 export <%= key %>="<%= val %>"
 <%- end -%>
-export PATH="${PATH:+$PATH:}/usr/sbin:/sbin"
+export PATH="${PATH}:/usr/sbin:/sbin"
+[ -f $sysconfig ] && . $sysconfig
 
-. /etc/rc.d/init.d/functions
+export GOMAXPROCS=${GOMAXPROCS:-2}
 
-_start() {
+start() {
     [ -x $exec ] || exit 5
-
+    [ -d $confdir ] || exit 6
     umask 077
-    touch $pidfile $logfile
+    echo -n $"Starting $prog: "
+    touch $logfile $pidfile
     chown $user $pidfile $logfile
-
-    echo -n $"Starting <%= @name %>: "
     daemon \
-        --pidfile=$pidfile \
-        --user=$user \
-        " { $exec <%= @daemon_options %> >> $logfile 2>&1 & } ; echo \$! >| $pidfile "
+      --pidfile=$pidfile \
+      --user=$user \
+        " { $exec <%= @daemon_options %> >> $logfile 2>&1 & }; echo \$! >| $pidfile"
+
     RETVAL=$?
-    echo
     [ $RETVAL -eq 0 ] && touch $lockfile
+    echo
     return $RETVAL
 }
 
-_stop() {
-    echo -n $"Stopping <%= @name %>: "
-    killproc -p $pidfile $exec -<%= @stop_signal %>
+stop() {
+    echo -n $"Stopping $prog: "
+    killproc -p $pidfile $exec -INT 2>> $logfile
     RETVAL=$?
+    [ $RETVAL -eq 0 ] && rm -f $pidfile $lockfile
     echo
-    [ $RETVAL -eq 0 ] && rm -f $lockfile $pidfile
     return $RETVAL
 }
 
-_status() {
-    status -p $pidfile -l $prog $exec
-}
-
-_reload() {
-    echo -n $"Reloading <%= @name %>: "
-    killproc -p $pidfile $exec -<%= @reload_signal %>
-    echo
-}
-
-_restart() {
-    _stop
+restart() {
+    stop
     while :
     do
         ss -pl | fgrep "((\"$prog\"," > /dev/null
         [ $? -ne 0 ] && break
         sleep 0.1
     done
-    _start
+    start
 }
 
-_status_q() {
-    _status >/dev/null 2>&1
+reload() {
+    echo -n $"Reloading $prog: "
+    killproc -p $pidfile $exec -HUP
+    echo
+}
+
+force_reload() {
+    restart
+}
+
+rh_status() {
+    status $prog
+}
+
+rh_status_q() {
+    rh_status >/dev/null 2>&1
 }
 
 case "$1" in
     start)
-        _status_q && exit 0
-        _start
+        rh_status_q && exit 0
+        $1
         ;;
     stop)
-        _status_q || exit 0
-        _stop
+        rh_status_q || exit 0
+        $1
         ;;
-    restart|force-reload)
-        _restart
+    restart)
+        $1
         ;;
-    reload)
-        _status_q || exit 7
-        _reload
+    reload|force-reload)
+        rh_status_q || exit 7
+        $1
         ;;
     status)
-        _status
+        rh_status
         ;;
     condrestart|try-restart)
-        _status_q || exit 0
-        _restart
+        rh_status_q || exit 7
+        restart
         ;;
     *)
         echo $"Usage: $0 {start|stop|status|restart|condrestart|try-restart|reload|force-reload}"

@@ -65,16 +65,21 @@ action :enable do
       content(
         Unit: {
           Description: 'consul',
-          Wants: 'network.target',
-          After: 'network.target',
+          Wants: 'network-online.target',
+          After: 'network-online.target',
+          ConditionFileNotEmpty: new_resource.config_file,
         },
         Service: {
           Environment: new_resource.environment.map { |key, val| %("#{key}=#{val}") }.join(' '),
           ExecStart: command(new_resource.config_file, new_resource.config_dir, new_resource.program),
-          ExecReload: '/bin/kill -HUP $MAINPID',
-          KillSignal: 'TERM',
+          ExecReload: '/bin/kill --signal HUP $MAINPID',
+          KillMode: 'process',
+          KillSignal: 'SIGTERM',
           User: new_resource.user,
+          Group: new_resource.group,
           WorkingDirectory: new_resource.data_dir,
+          Restart: 'on-failure',
+          LimitNOFILE: 65536,
         }.merge(new_resource.systemd_params),
         Install: {
           WantedBy: 'multi-user.target',
