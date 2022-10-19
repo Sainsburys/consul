@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 5.3.3 - *2022-10-19*
+
+- re-add CentOS 6 usage
+- include ui_config settings for config
+
 ## 5.3.2 - *2022-02-17*
 
 - Standardise files with files in sous-chefs/repo-management
